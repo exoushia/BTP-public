@@ -1,5 +1,14 @@
+import matplotlib
+matplotlib.use("agg")
+
+import matplotlib.pyplot as plt
+from sklearn.metrics import classification_report, multilabel_confusion_matrix, precision_recall_fscore_support
+from sklearn.metrics.pairwise import cosine_similarity
+import pickle
 import numpy as np
 import pandas as pd
+import argparse, time
+
 
 
 def print_info(df,category):
@@ -14,30 +23,6 @@ def print_info(df,category):
     print("---------------------------------")
     print("\n\n")
 
-def quantify_info(df,to_save=True,filepath="results/InfoTable.csv")
-	dict_columns = {'category':[],'#yesno':[],'#descriptive':[],'#non_answerable':[],'#answerable':[],'#yesno-answerable':[],'#descriptive-answerable':[],'#yesno-non_answerable':[],'#descriptive-non_answerable':[]}
-	category = list(set(df['category']))
-
-	for cat in category:
-	    temp = df.loc[df['category']==cat]
-	    dict_columns['category'].append(cat)
-	    dict_columns['#yesno'].append(len(temp.loc[temp['questionType']=='yesno']))
-	    dict_columns['#descriptive'].append(len(temp.loc[temp['questionType']=='descriptive']))
-	    dict_columns['#non_answerable'].append(len(temp.loc[temp['is_answerable']==0]))
-	    dict_columns['#answerable'].append(len(temp.loc[temp['is_answerable']==1]))
-	    dict_columns['#yesno-answerable'].append(len(temp.loc[(temp['is_answerable']==1) & (temp['questionType']=='yesno')]))
-	    dict_columns['#descriptive-answerable'].append(len(temp.loc[(temp['is_answerable']==1) & (temp['questionType']=='descriptive')]))
-	    dict_columns['#yesno-non_answerable'].append(len(temp.loc[(temp['is_answerable']==0) & (temp['questionType']=='yesno')]))
-	    dict_columns['#descriptive-non_answerable'].append(len(temp.loc[(temp['is_answerable']==0) & (temp['questionType']=='descriptive')]))
-	del temp
-
-	df_table = pd.DataFrame(dict_columns)
-	del temp
-
-	if to_save:
-		df_table.to_csv(filepath,index=None)
-		
-	return df_table
 
 def flat_accuracy(preds, labels):
     pred_flat = np.argmax(preds, axis=1).flatten()
@@ -53,3 +38,46 @@ def format_time(elapsed):
     
     # Format as hh:mm:ss
     return str(datetime.timedelta(seconds=elapsed_rounded))
+
+def print_classification_report(y_pred, y_true, title, target_names=['no_answerable','unanswerable', 'yes_answerable'],
+								save_result_path="Expt_results/results.csv"):
+
+	str_title = "Printing Classification Report : " + title + " \n\n"
+	print(str_title)
+	report = classification_report(y_true, y_pred, target_names=target_names, output_dict=True)
+	df = pd.DataFrame(report)
+	df.to_csv(save_result_path)
+	print(report)
+
+	str_title = "\n\n Printing Multilabel Confusion Matrix : " + title + " \n\n"
+	print(str_title)
+	print(multilabel_confusion_matrix(y_true, y_pred))
+
+	print("\n All Results Printed !! \n")
+
+def save_object(obj, filename):
+	with open(filename, 'wb') as output:  # Overwrites any existing file.
+		pickle.dump(obj, output, pickle.HIGHEST_PROTOCOL)
+
+
+def plot_results(train_losses_plot,val_accuracies_plot,figname):
+	
+	plt.style.use('classic')
+	fig = plt.figure(figsize=(10, 8))
+	print("Starting to plot figures.... \n\n")
+
+	ax = plt.subplot(2, 1, 1)
+	ax.plot(train_losses_plot)
+	ax.set(title="training set loss")
+	ax.grid()
+	if figname is not None:
+		fig.savefig(figname[0])
+
+	ax = plt.subplot(2, 1, 2)
+	ax.plot(self.val_accuracies_plot, color='green')
+	ax.set(title="validation accuracy")
+	ax.grid()
+	if figname is not None:
+		fig.savefig(figname[1])
+	plt.show()
+
