@@ -7,6 +7,7 @@ import random
 import settings
 from prepro.data_loading import *
 from prepro.reading_files import *
+from train import *
 import test
 import utils
 import argparse, torch 
@@ -26,7 +27,7 @@ class config_BERT():
 	padding = 'post'
 	truncation = 'post'
 	test_size=0.1
-	batch_size=16
+	batch_size=4
 	batch_size_test = None
 	num_labels = 3
 	cutoff = 0.7
@@ -36,9 +37,9 @@ class config_BERT():
 	eps = 1e-8
 
 class config_file():
-	question_type='yesno'
+	question_type=['yesno']
 	category_type=['Home_and_Kitchen']
-	column_list=['asin','category','questionText','review_snippets','label']
+	column_list=['asin','questionType','category','questionText','review_snippets','answers','is_answerable']
 
 
 def set_seed(seed_value=42):
@@ -58,12 +59,12 @@ if __name__ == '__main__':
 	parser.add_argument("-path_to_ckpt", default='Expt_results/checkpoint_' + timestamp + '.pt',
 						help="Path to where checkpoints will be stored")
 
-	parser.add_argument("-filetype", default='jsonl', help="filetype")
+	parser.add_argument("-filetype", default='csv', help="filetype")
 
 
-	parser.add_argument("-name_train", default='train_sample.jsonl', help="Name of train file")
-	parser.add_argument("-name_val", default='val_sample.jsonl', help="Name of val file or None: Train will be splitted")
-	parser.add_argument("-name_test", default='test_sample.jsonl', type=str, help="Name of test file")
+	parser.add_argument("-name_train", default='train_sample.csv', help="Name of train file")
+	parser.add_argument("-name_val", default='val_sample.csv', help="Name of val file or None: Train will be splitted")
+	parser.add_argument("-name_test", default='test_sample.csv', type=str, help="Name of test file")
 
 	parser.add_argument("-to_preprocess_train", default=True, type=bool,help="Boolean to preprocess train and val data")
 	parser.add_argument("-to_preprocess_test", default=True, type=bool, help="Boolean to preprocess test data")
@@ -96,17 +97,19 @@ if __name__ == '__main__':
 		elif filetype == 'csv':
 			df_train = read_csv_cols(train_path,config_2.question_type,config_2.category_type,config_2.column_list)
 
-		df_train , _ = assign_class(df_train,config.cutoff,col1="answers",col2="is_answerable")
+		# df_train = drop_null(df_train)
+		# df_train , _ = assign_class(df_train,config.cutoff,col1="answers",col2="is_answerable")
 
 		if args.to_preprocess_train:
 			preprocessed_filepath = args.path_to_data + '/' + 'preprocessed_' + args.name_train 
-			df_train = run_preprocess(df_train,'train',preprocessed_filepath)
+			df_train = run_preprocess(df_train,'train',config.cutoff,preprocessed_filepath)
 
-		sample_ratio_list = [100,100,100]
+		print("Value counts in train")
+		print(df_train.shape)
+
+		sample_ratio_list = [2,2,1]
 		labels_list = [1,2,0]
 		df_train = sample_from_class(df_train,sample_ratio_list,labels_list)
-		print("Value counts in train")
-		print(df_train.value_counts())
 		print("Creating Data loaders for Train : \n")
 		sentencesA = df_train['questionText'].values
 		sentencesB = df_train['review_snippets_total'].values
@@ -125,11 +128,12 @@ if __name__ == '__main__':
 			elif filetype == 'csv':
 				df_val = read_csv_cols(val_path,config_2.question_type,config_2.category_type,config_2.column_list)
 
-			df_val , _ = assign_class(df_val,config.cutoff,col1="answers",col2="is_answerable")
+			# df_val = drop_null(df_val)
+			# df_val , _ = assign_class(df_val,config.cutoff,col1="answers",col2="is_answerable")
 			
 			if args.to_preprocess_train:
 				preprocessed_filepath = args.path_to_data + '/' + 'preprocessed_' + args.name_val 
-				df_val = run_preprocess(df_val,'Validation',preprocessed_filepath)
+				df_val = run_preprocess(df_val,'Validation', config.cutoff,preprocessed_filepath)
 
 			print("Creating Data loaders for Validation : \n")
 			sentencesA = df_val['questionText'].values
@@ -163,11 +167,11 @@ if __name__ == '__main__':
 		elif filetype == 'csv':
 			df_test = read_csv_cols(test_path,config_2.question_type,config_2.category_type,config_2.column_list)
 
-		df_test , _ = assign_class(df_train,config.cutoff,col1="answers",col2="is_answerable")
+		# df_test , _ = assign_class(df_train,config.cutoff,col1="answers",col2="is_answerable")
 
 		if args.to_preprocess_test:
 			preprocessed_filepath = args.path_to_data + '/' + 'preprocessed_' + args.name_test 
-			df_test = run_preprocess(df_test,'test',preprocessed_filepath)
+			df_test = run_preprocess(df_test,'test',config.cutoff,preprocessed_filepath)
 
 		print("Creating Data loaders for Test : \n")
 		sentencesA = df_test['questionText'].values
