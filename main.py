@@ -4,12 +4,13 @@ import time
 import datetime
 import tensorflow as tf
 import random
-import settings
+from settings import *
 from prepro.data_loading import *
 from prepro.reading_files import *
 from train import *
-import test
-import utils
+from network_architecture import model_bert
+from test import *
+from utils import *
 import argparse, torch 
 import numpy as np
 import pandas as pd
@@ -62,9 +63,9 @@ if __name__ == '__main__':
 	parser.add_argument("-filetype", default='csv', help="filetype")
 
 
-	parser.add_argument("-name_train", default='train_sample.csv', help="Name of train file")
+	parser.add_argument("-name_train", default='train_sample .csv', help="Name of train file")
 	parser.add_argument("-name_val", default='val_sample.csv', help="Name of val file or None: Train will be splitted")
-	parser.add_argument("-name_test", default='test_sample.csv', type=str, help="Name of test file")
+	parser.add_argument("-name_test", default='test_sample .csv', type=str, help="Name of test file")
 
 	parser.add_argument("-to_preprocess_train", default=True, type=bool,help="Boolean to preprocess train and val data")
 	parser.add_argument("-to_preprocess_test", default=True, type=bool, help="Boolean to preprocess test data")
@@ -179,22 +180,24 @@ if __name__ == '__main__':
 		labels_ts = df_test['label'].values
 
 		dl_test = Preprocess_dataloading_bert(sentencesA,sentencesB,labels_ts)
-		input_ids_test , attention_ids_test , sent_ids_test = dl.tokenize(tokenizer,config.tokenizer_name,config)
+		input_ids_test , attention_ids_test , sent_ids_test = dl_test.tokenize(tokenizer,config.tokenizer_name,config)
 
 		test = [torch.tensor(input_ids_test),torch.tensor(attention_ids_test),torch.tensor(labels_ts),torch.tensor(sent_ids_test)]
 
 		if config.batch_size_test == None:
-			config.batch_size_test = len(dl_test)
+			config.batch_size_test = len(df_test)
 
-		test_loader = dl.dataloading('test',config.batch_size_test, test[0],test[1],test[2],test[3])
+		test_loader = dl_test.dataloading('test',config.batch_size_test, test[0],test[1],test[2],test[3])
 
-		y_pred, y_true = run_test(model,test_loader)
+		y_pred, y_true = model.evaluate_bert(test_loader,'Test')
 		title = 'Results ' + str(timestamp) 
 		print_classification_report(y_pred, y_true, title, target_names=['no_answerable','unanswerable', 'yes_answerable'],
 								save_result_path=args.save_result_path)
 
 		print("Saving model...")
-		torch.save(model.state_dict(), args.path_to_ckpt)
+		torch.save(model.model.state_dict(), args.path_to_ckpt)
+		# model.save_pretrained('./my_mrpc_model/')
+
 	elif args.mode == "only_test":
 		pass
 

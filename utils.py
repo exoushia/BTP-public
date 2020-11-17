@@ -8,6 +8,7 @@ import pickle
 import numpy as np
 import pandas as pd
 import argparse, time
+import datetime
 
 
 
@@ -74,7 +75,7 @@ def plot_results(train_losses_plot,val_accuracies_plot,figname):
 		fig.savefig(figname[0])
 
 	ax = plt.subplot(2, 1, 2)
-	ax.plot(self.val_accuracies_plot, color='green')
+	ax.plot(val_accuracies_plot, color='green')
 	ax.set(title="validation accuracy")
 	ax.grid()
 	if figname is not None:

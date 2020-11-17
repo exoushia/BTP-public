@@ -1,11 +1,13 @@
 import torch
 from transformers import BertForSequenceClassification, AdamW, get_linear_schedule_with_warmup
 import tensorflow as tf
-
-
+import time
+from settings import device
+from utils import *
+import datetime
 
 class model_bert:
-	def __init__(model_name,num_labels,config,total_steps):
+	def __init__(self,model_name,num_labels,config,total_steps):
 		#Instantiating the model
 		self.config = config
 		self.model = BertForSequenceClassification.from_pretrained(
@@ -13,6 +15,7 @@ class model_bert:
 		    num_labels = num_labels, 
 		    output_attentions = False, 
 		    output_hidden_states = False, 
+		    return_dict=True
 
 		)
 
@@ -27,9 +30,10 @@ class model_bert:
 
 
 		# Telling pytorch to run this model on the GPU.
-		self.model.cuda()
+		if torch.cuda.is_available():
+			self.model.cuda()
 
-		params = list(model.named_parameters())
+		params = list(self.model.named_parameters())
 		print('The BERT model has {:} different named parameters.\n'.format(len(params)))
 		print('==== Embedding Layer ====\n')
 		for p in params[0:5]:
@@ -41,9 +45,10 @@ class model_bert:
 		for p in params[-4:]:
 		    print("{:<55} {:>12}".format(p[0], str(tuple(p[1].size()))))
 
-		return self.model
+	def eval_switch(self):
+		self.model.eval()
 
-	def forward(epoch_i,train_loader):
+	def forward(self,epoch_i,train_loader):
 		# ========================================
 	    #               Training
 	    # ========================================
@@ -87,7 +92,7 @@ class model_bert:
 	        
 	        # The call to `model` always returns a tuple, so we need to pull the 
 	        # loss value out of the tuple.
-	        loss = outputs.logits
+	        loss = outputs.loss
 	        total_loss += loss.item()
 	        loss.backward()
 
@@ -106,6 +111,59 @@ class model_bert:
 	    print("  Training epcoh took: {:}".format(format_time(time.time() - t0)))
 
 	    return avg_train_loss
+
+
+	def evaluate_bert(self,validation_dataloader,filename='Validation'):
+		print("\n Running {}...".format(filename))
+		t0 = time.time()
+
+		self.eval_switch()
+		eval_loss, eval_accuracy = 0, 0
+		nb_eval_steps, nb_eval_examples = 0, 0
+
+		pred = []
+		true = []
+
+		for batch in validation_dataloader:
+			
+			# Add batch to GPU
+			batch = tuple(t.to(device) for t in batch)
+			b_input_ids, b_input_mask, b_labels, b_segment = batch
+
+			with torch.no_grad():        
+				outputs = self.model(b_input_ids, token_type_ids=b_segment, attention_mask=b_input_mask)
+			
+			# Get the "logits" output by the model. The "logits" are the output
+			# values prior to applying an activation function like the softmax.
+			logits = outputs.logits
+			# Move logits and labels to CPU
+			logits = logits.detach().cpu().numpy()
+			label_ids = b_labels.to('cpu').numpy()
+			
+			# Calculate the accuracy for this batch of test sentences.
+			tmp_eval_accuracy = flat_accuracy(logits, label_ids)
+			
+			# Accumulate the total accuracy.
+			eval_accuracy += tmp_eval_accuracy
+			# Track the number of batches
+			nb_eval_steps += 1
+
+			if filename == 'Test':
+				y_pred = np.argmax(logits, axis=1).flatten()
+				y_true = b_labels.to('cpu').numpy().flatten()
+				pred.extend(y_pred)
+				true.extend(y_true)
+
+
+		# Report the final accuracy for this validation run.
+		print("  {} Accuracy: {}".format(filename,eval_accuracy/nb_eval_steps))
+		print("  {} took: {}".format(filename,format_time(time.time() - t0)))
+
+		if filename == "Validation":
+			return eval_accuracy/nb_eval_steps
+		else: 
+			return pred,true
+
 
 
 

@@ -2,6 +2,8 @@ import time
 import settings 
 import utils
 import torch
+from settings import * 
+
 
 def run_test(model,test_dataloader):
 	print("\nTesting the model...")
@@ -9,7 +11,7 @@ def run_test(model,test_dataloader):
 	pred = []
 	true = []
 
-	model.eval()
+	model.eval_switch()
 	for batch in test_dataloader:
 		batch = tuple(t.to(device) for t in batch)
 		b_input_ids, b_input_mask, b_labels, b_segment = batch
