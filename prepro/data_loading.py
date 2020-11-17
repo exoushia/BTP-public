@@ -159,8 +159,10 @@ class Preprocess_dataloading_bert():
 		print("Tokenizer name - {}".format(tokenizer_name))
 		print('\nPadding token: "{:}", ID: {:}'.format(tokenizer.pad_token, tokenizer.pad_token_id))
 
-
+		count = 1
 		for s1,s2 in zip(self.sentencesA , self.sentencesB):
+			print(count)
+			count = count + 1 
 			token_type_id = []
 			input_id1 = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(s1))
 			input_id2 = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(s2))
