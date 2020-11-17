@@ -44,13 +44,11 @@ def evaluate_bert(model,validation_dataloader,filename='Validation'):
 
 	return eval_accuracy/nb_eval_steps
 
-def run_preprocess(df,filename,preprocessed_filepath):
+def run_preprocess(df,filename,cutoff,preprocessed_filepath):
 	print("----------------------File Info: [{}] -------------------------\n".format(filename))
 
 	print("-------------Assigning Label ----------------\n")
-	dict_num_classes = {}
-	list_keywords = ['no_class4_train' , 'num_yes_train' , 'num_no_train' , 'num_unans_train']
-	df, dict_num_classes = assign_class(df,cutoff,"answers","is_answerable",dict_num_classes,list_keywords)
+	df, dict_num_classes = assign_class(df,cutoff,"answers","is_answerable")
 	print("------------------------------------------------------\n")
 
 
