@@ -61,9 +61,9 @@ if __name__ == '__main__':
 	parser.add_argument("-filetype", default='jsonl', help="filetype")
 
 
-	parser.add_argument("-name_train", default='train-qar.jsonl', help="Name of train file")
-	parser.add_argument("-name_val", default='val-qar.jsonl', help="Name of val file or None: Train will be splitted")
-	parser.add_argument("-name_test", default='test-qar_all.jsonl', type=str, help="Name of test file")
+	parser.add_argument("-name_train", default='train_sample.jsonl', help="Name of train file")
+	parser.add_argument("-name_val", default='val_sample.jsonl', help="Name of val file or None: Train will be splitted")
+	parser.add_argument("-name_test", default='test_sample.jsonl', type=str, help="Name of test file")
 
 	parser.add_argument("-to_preprocess_train", default=True, type=bool,help="Boolean to preprocess train and val data")
 	parser.add_argument("-to_preprocess_test", default=True, type=bool, help="Boolean to preprocess test data")
