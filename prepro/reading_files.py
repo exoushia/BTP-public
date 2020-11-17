@@ -1,226 +1,145 @@
+import json
+import pickle
 from sklearn.preprocessing import LabelEncoder
 import pandas as pd
 import numpy as np
-
-import nltk
-from nltk.corpus import stopwords
-nltk.download('stopwords')
-from nltk.stem import WordNetLemmatizer 
-nltk.download('wordnet')
-from nltk.tokenize import word_tokenize 
-from nltk.tokenize import sent_tokenize
-stop_words = set(stopwords.words('english')) 
-nltk.download('punkt')
-from sklearn.feature_extraction.text import CountVectorizer
-import re , unicodedata , string
-
-from sklearn.model_selection import train_test_split
-
-from transformers import BertTokenizer
-import torch
+from ast import literal_eval
 
 
-from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
-from keras.preprocessing.sequence import pad_sequences
+def load_jsonl(input_path,question_type,category_type,column_list=['asin','category','questionText','review_snippets','label']) -> list:
+	"""
+	Read list of objects from a JSON lines file.
+	"""
+	data = []
+	with open(input_path, 'r', encoding='utf-8') as f:
+		for line in f:
+			data.append(json.loads(line.rstrip('\n|\r')))
+	print('Loaded {} records from {}'.format(len(data), input_path))
+	df = pd.DataFrame(data)
+	df = df[column_list]
+	if question_type!=None:
+		df= df.loc[df['questionType'].isin(question_type)]
+	if category_type != None:
+		df = df.loc[df['category'].isin(category_type)]
+	del data
+	return df
 
+def read_csv_cols(input_path,question_type,category_type,column_list=['asin','category','questionText','review_snippets','label']):
+	df = pd.read_csv(input_path)
+	df = df[column_list]
+	if question_type!=None:
+		df= df.loc[df['questionType'].isin(question_type)]
+	if category_type != "all" :
+		df = df.loc[df['category'].isin(category_type)]
+	return df
 
+def drop_null(df):
 
-class Preprocessing_text:
-	'''
-	Preprocessing pipeline : sequence of indices representing the methods to be used while preprocessing each row in the df passed
-	The index to method mapping is as follows:
-	remove_URL:1, remove_non_ascii:2, remove_punctuation:3, remove_stopwords:4, to_lower:5, lemmatize_postags:6, 
-	replace_nan:7, get_top_n_words:8, remove_common_words:9
+	df = df.loc[~df.questionText.isnull()]
+	df = df.loc[~df.review_snippets_total.isnull()]
 
+	print("\n Final distribution of classes after removing null values: " )
+	print(df["label"].value_counts())
+	return df
 
-	All methods can be used in apply() method for dataframes [except #8 which requires the entire corpus] 
-	'''
-	def __init__ (self,preprocessing_pipeline=[7,5,2,3,4],stopword_list=list(set(stopwords.words('english')))):
-		self.stopword_list = stopword_list
-		self.preprocess_methods = [self.blank,self.remove_URL,self.remove_non_ascii,self.remove_punctuation,self.remove_stopwords,
-									self.to_lower,self.lemmatize_postags,self.replace_nan,self.get_top_n_words,self.remove_common_words]
-		self.preprocessing_pipeline = preprocessing_pipeline
-		self.words_frequent = []
-		
-	def blank(self,sample_str):
-		return sample_str
+def target_class(answers):
+	class1 = "yes_answerable"
+	class2 = "no_answerable"
+	class4 = "yes_no_equal"
 
-	def remove_URL(self,sample_str):
-		"""Remove URLs from a sample string"""
-		return re.sub(r"http\S+", "", sample_str)
+	yes=0
+	no=0
+	NA = 0
+	answers = literal_eval(answers)
+	for i in range(len(answers)):
+		dict_ = answers[i]
+		if dict_['answerType'] == 'N' : 
+			no = no+1
+		elif dict_['answerType'] == 'Y' : 
+			yes = yes+1
+		elif dict_['answerType'] == 'NA' :
+			NA = NA+1 
+	if yes>no : 
+		return str(yes)+"#"+str(no)+"#"+str(NA)+"#"+class1
+	elif no>yes:
+		return str(yes)+"#"+str(no)+"#"+str(NA)+"#"+class2
+	else:
+		return str(yes)+"#"+str(no)+"#"+str(NA)+"#"+class4
 
-	def remove_non_ascii(self,sample_str):
-		"""Remove non-ASCII characters from a sample string [sample_str]"""
-		words = word_tokenize(sample_str)
-		new_words = []
-		for word in words:
-			new_word = unicodedata.normalize('NFKD', word).encode('ascii', 'ignore').decode('utf-8', 'ignore')
-			new_words.append(new_word)
-		return ' '.join(new_words)
+def assign_class(df,cutoff,col1="answers",col2="is_answerable"):
+	classes = []
+	labels = []
+	dict_num_classes = {}
+	list_keywords = ['no_class4_train' , 'num_yes_train' , 'num_no_train' , 'num_unans_train']
 
-	def remove_punctuation(self,sample_str):
-		"""Remove punctuation from a sample string"""
-		words = word_tokenize(sample_str)
-		new_words = []
-		for word in words:
-			new_word = re.sub(r'[^\w\s]', '', word)
-			if new_word != '':
-				new_words.append(new_word)
-		return ' '.join(new_words)
+	no_class4 = 0
+	num_yes = 0
+	num_no = 0
+	num_unans=0
 
-	def remove_stopwords(self,sample_str):
-		"""Remove stop words from a sample string"""
-		words = word_tokenize(sample_str)
-		new_words = []
-		for word in words:
-			if word not in self.stopword_list:
-				new_words.append(word)
-		return ' '.join(new_words)
-
-	def to_lower(self,sample_str):
-		""" Converting all words to lowercase in a sample string"""
-		return sample_str.lower()
-
-
-	def lemmatize_postags(self,sample_str):
-		"""Lemmatize verbs,adj and noun in a sample string"""
-		words = word_tokenize(sample_str)
-		lemmatizer = WordNetLemmatizer()
-		lemmas = []
-		for word in words:
-			word = lemmatizer.lemmatize(word, pos='v')
-			word = lemmatizer.lemmatize(word, pos='n')
-			word = lemmatizer.lemmatize(word, pos='a')
-			lemmas.append(lemma)
-		return ' '.join(lemmas)
-
-	def replace_nan(self,sample_str):
-		"""Replacing nan strings with empty strings - required for textrank"""        
-		sample_str_new = re.sub('nan' , '' , str(sample_str))
-		return sample_str_new
-
-	def get_top_n_words(self,corpus, n=5):
-		"""
-		List the top n words in a vocabulary according to occurrence in a text corpus and updates self.words_frequent to be used later
-
-		get_top_n_words(["I love Python", "Python is a language programming", "Hello world", "I love the world"]) -> 
-		[('python', 2),
-		('world', 2),
-		('love', 2),
-		('hello', 1),
-		('is', 1),
-		('programming', 1),
-		('the', 1),
-		('language', 1)]
-		Repetitive words may be removed because they might not hold enough specific information to be assigned as keywords
-		"""
-		vec = CountVectorizer().fit(corpus)
-		bag_of_words = vec.transform(corpus)
-		sum_words = bag_of_words.sum(axis=0) 
-		self.words_frequent = [(word, sum_words[0, idx]) for word, idx in vec.vocabulary_.items()]
-		self.words_frequent =sorted(words_freq, key = lambda x: x[1], reverse=True)
-		self.words_frequent = [word for word,count in self.words_frequent]
-		print('Most {} common words in the given corpus are : \n'.format(len(words_freq)))
-		for i in range(n):
-			print(words_freq[i])
-		self.words_frequent = words_freq[:n]
-
-	def remove_common_words(self,sample_str):
-		"""Removes the most frequent words from the sample string using words_frequent list provided by get_top_n_words"""
-		words = word_tokenize(sample_str)
-		filtered_words = []
-		for word in words:
-			if word.lower not in self.words_frequent:
-				filtered_words.append(word)
-		return " ".join(filtered_words)
-
-	def main_df_preprocess(self,df,column_list):
-		"""Main function to apply all listed methods as specified"""
-		for col in column_list:
-			for index in self.preprocessing_pipeline:
-				if index!=8 or index!=9:
-					df[col] = df[col].apply(self.preprocess_methods[index])
-		return df
-
-
-class Preprocess_dataloading_bert():
-	def __init__(self,sentencesA,sentencesB,labels):
-		self.sentencesA = sentencesA
-		self.sentencesB = sentencesB
-		self.labels = labels
+	for i in range(len(df)):
+		if df.iloc[i][col2] == 0:
+			classes.append("unanswerable")
+			labels.append("unanswerable")
+			continue
+		else:
+			classes.append(target_class(df.iloc[i][col1]))
+			yes = target_class(df.iloc[i][col1]).split('#')[0]
+			no = target_class(df.iloc[i][col1]).split('#')[1]
+			if target_class(df.iloc[i][col1]).split("#")[3] == "yes_answerable" and yes!='0' : 
+				yes = int(yes)/(int(yes)+int(no))
+				no = int(no)/(int(yes)+int(no))
+				if yes>=float(cutoff): labels.append("yes_answerable")
+				else: labels.append("yes_no_equal")
+			elif target_class(df.iloc[i][col1]).split("#")[3] == "no_answerable" and no!='0' :
+				yes = int(yes)/(int(yes)+int(no))
+				no = int(no)/(int(yes)+int(no))
+				if no>=float(cutoff): labels.append("no_answerable")
+				else: labels.append("yes_no_equal")
+			else:
+				labels.append("yes_no_equal")
+			
 	
-	def tokenize(self,tokenizer,tokenizer_name,config):
-		max_length=config.max_length
-		padding=config.padding
-		truncation=config.truncation
-		input_ids = []
-		attention_ids = []
-		sent_id = []
-		print("Tokenizer name - {}".format(tokenizer_name))
-		print('\nPadding token: "{:}", ID: {:}'.format(tokenizer.pad_token, tokenizer.pad_token_id))
+	for i in range(len(labels)):
+		if labels[i] == 'unanswerable' : num_unans = num_unans + 1
+		elif labels[i] == "yes_answerable" : num_yes = num_yes + 1
+		elif labels[i] == "yes_no_equal" : no_class4 = no_class4 + 1
+		elif labels[i] == "no_answerable" : num_no = num_no + 1
 
-		count = 1
-		for s1,s2 in zip(self.sentencesA , self.sentencesB):
-			print(count)
-			count = count + 1 
-			token_type_id = []
-			input_id1 = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(s1))
-			input_id2 = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(s2))
+	df["target"] = classes
+	df["label"] = labels
+	   
+	dict_num_classes[list_keywords[0]] = no_class4
+	dict_num_classes[list_keywords[1]] = num_yes
+	dict_num_classes[list_keywords[2]] = num_no
+	dict_num_classes[list_keywords[3]] = num_unans
 
-			while len(input_id1) + len(input_id2) > (max_length - 3):
-				if len(input_id2) > len(input_id1):
-					input_id2.pop()
-				if len(input_id1) > len(input_id2):
-					input_id1.pop()
+	print("# of observations in data set with equal yes and no as answertype [for answerable] : {} out of total {} obs".format(dict_num_classes[list_keywords[0]],len(df)))
+	print("# of observations in data set with label = yes : {}".format(dict_num_classes[list_keywords[1]]))
+	print("# of observations in data set with label = no : {}".format(dict_num_classes[list_keywords[2]]))
+	print("# of observations in data set with label = unanswerable : {}".format(dict_num_classes[list_keywords[3]]))
 
-			input_id3 = tokenizer.build_inputs_with_special_tokens(input_id1,input_id2)
-			input_ids.append(input_id3)
+	df = df.loc[df["label"]!="yes_no_equal"]
+	del labels, classes
+	return df , dict_num_classes
 
-			token_type_id = [0]*(len(input_id1)+2)
-			token_type_id = token_type_id + [1]*(len(input_id2)+1)
-			sent_id.append(token_type_id)
+def encode_label(df,label_column):
+	le = LabelEncoder()
+	df[label_column] = le.fit_transform(df[label_column])
+	print(dict(zip(le.classes_, le.transform(le.classes_))))
+	return df , le 
 
-		input_ids = pad_sequences(input_ids, maxlen=max_length, dtype="long", value=int(tokenizer.pad_token_id), truncating=truncation, padding=padding)
-		sent_id = pad_sequences(sent_id, maxlen=max_length, dtype="long", value=int(tokenizer.pad_token_id), truncating="post", padding="post")
+# def encode_label_test(df,label_column,label_encoder):
+#     df[label_column] = label_encoder.transform(df[label_column])
+#     print("Should be similar to train : \n")
+#     print(dict(zip(label_encoder.classes_, label_encoder.transform(label_encoder.classes_))))
+#     return df 
 
-		for each_sent in input_ids:
-			mask_id = [int(token_id>0) for token_id in each_sent]
-			attention_ids.append(mask_id)
+def drop_column(df,colname_list):
+	df = df.drop(colname_list,axis=1)
+	return df
 
-		print("Tokenizing of data and including special tokens is completed. ")
+def sample_from_class(df,sample_ratio_list,label):
+	df = pd.concat([ df.loc[df['label']==label[0]].sample(sample_ratio_list[0]) , df.loc[df['label']==label[1]].sample(sample_ratio_list[1]) , df.loc[df['label']==label[2]].sample(sample_ratio_list[2])]).sample(frac=1) 
+	return df
 
-		return input_ids , attention_ids , sent_id
-	
-	def train_test_split_dataloading(self, input_ids , attention_ids , sent_id, test_size):
-		train_inputs, validation_inputs, train_labels, validation_labels = train_test_split(input_ids, self.labels , 
-															test_size=test_size)
-
-		train_masks, validation_masks, _, _ = train_test_split(attention_ids, self.labels,
-													test_size=test_size)
-
-		train_segment, validation_segment, _, _ = train_test_split(sent_id, self.labels,
-													test_size=test_size)
-		train_inputs = torch.tensor(train_inputs)
-		validation_inputs = torch.tensor(validation_inputs)
-		train_labels = torch.tensor(train_labels)
-		validation_labels = torch.tensor(validation_labels)
-		train_masks = torch.tensor(train_masks)
-		validation_masks = torch.tensor(validation_masks)
-		train_segment = torch.tensor(train_segment)
-		validation_segment = torch.tensor(validation_segment)
-
-		train = [train_inputs, train_masks, train_labels, train_segment ]
-		val = [validation_inputs, validation_masks, validation_labels, validation_segment]
-
-		print("Train test split completed. Shape of train inputs: {} ".format(train_inputs.shape))
-		return train , val
-	
-	def dataloading(self,filename,batch_size, input_, masks,labels,segment ):
-
-		# Create the DataLoader for our training set.
-		data = TensorDataset(input_, masks, labels, segment)
-		sampler = RandomSampler(data)
-		dataloader = DataLoader(data, sampler=sampler, batch_size=batch_size)
-		print("{}".format(filename))
-		print("dataloaders created for batch size : {}".format(batch_size))
-		return dataloader 
