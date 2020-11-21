@@ -23,7 +23,7 @@ timestamp = time.strftime("%d-%m-%Y_%H:%M")
 class config_BERT():
 	patience = 2
 	delta = 0.02
-	epochs = 4
+	epochs = 15
 	max_length = 260
 	padding = 'post'
 	truncation = 'post'
