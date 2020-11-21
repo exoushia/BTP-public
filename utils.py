@@ -51,8 +51,16 @@ def print_classification_report(y_pred, y_true, title, target_names=['no_answera
 	print(report)
 
 	str_title = "\n\n Printing Multilabel Confusion Matrix : " + title + " \n\n"
+	d = ['no_answerable','unanswerable', 'yes_answerable']
 	print(str_title)
-	print(multilabel_confusion_matrix(y_true, y_pred))
+	cmtx = multilabel_confusion_matrix(y_true, y_pred)
+	print(d[0])
+	print(pd.DataFrame(cmtx[0], index=['true:neg', 'true:pos'], columns=['pred:neg', 'pred:yes']))
+	print(d[1])
+	print(pd.DataFrame(cmtx[1], index=['true:neg', 'true:pos'], columns=['pred:neg', 'pred:yes']))
+	print(d[2])
+	print(pd.DataFrame(cmtx[2], index=['true:neg', 'true:pos'], columns=['pred:neg', 'pred:yes']))
+
 
 	print("\n All Results Printed !! \n")
 
