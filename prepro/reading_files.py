@@ -25,11 +25,11 @@ def load_jsonl(input_path,question_type,category_type,column_list=['asin','categ
 	return df
 
 def read_csv_cols(input_path,question_type,category_type,column_list=['asin','category','questionText','review_snippets','label']):
-	df = pd.read_csv(input_path)
+	df = pd.read_csv(input_path,engine='python',encoding='utf-8',error_bad_lines=False)
 	df = df[column_list]
 	if question_type!=None:
 		df= df.loc[df['questionType'].isin(question_type)]
-	if category_type != "all" :
+	if category_type != None :
 		df = df.loc[df['category'].isin(category_type)]
 	return df
 
@@ -129,11 +129,6 @@ def encode_label(df,label_column):
 	print(dict(zip(le.classes_, le.transform(le.classes_))))
 	return df , le 
 
-# def encode_label_test(df,label_column,label_encoder):
-#     df[label_column] = label_encoder.transform(df[label_column])
-#     print("Should be similar to train : \n")
-#     print(dict(zip(label_encoder.classes_, label_encoder.transform(label_encoder.classes_))))
-#     return df 
 
 def drop_column(df,colname_list):
 	df = df.drop(colname_list,axis=1)
