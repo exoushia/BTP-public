@@ -23,13 +23,13 @@ timestamp = time.strftime("%d-%m-%Y_%H:%M")
 class config_BERT():
 	patience = 2
 	delta = 0.02
-	epochs = 2
-	max_length = 20
+	epochs = 4
+	max_length = 260
 	padding = 'post'
 	truncation = 'post'
-	test_size=0.1
-	batch_size=4
-	batch_size_test = None
+	test_size=0.2
+	batch_size=16
+	batch_size_test = 64
 	num_labels = 3
 	cutoff = 0.7
 	tokenizer_name="BertTokenizer"
@@ -38,9 +38,10 @@ class config_BERT():
 	eps = 1e-8
 
 class config_file():
-	question_type=['yesno']
-	category_type=['Home_and_Kitchen']
-	column_list=['asin','questionType','category','questionText','review_snippets','answers','is_answerable']
+	question_type=None
+	category_type=None
+	# column_list=['asin','questionType','category','questionText','review_snippets','answers','is_answerable']
+	column_list = ["review_snippets_total","questionText","label"]
 
 
 def set_seed(seed_value=42):
@@ -63,13 +64,13 @@ if __name__ == '__main__':
 	parser.add_argument("-filetype", default='csv', help="filetype")
 
 
-	parser.add_argument("-name_train", default='train_sample .csv', help="Name of train file")
-	parser.add_argument("-name_val", default='val_sample.csv', help="Name of val file or None: Train will be splitted")
-	parser.add_argument("-name_test", default='test_sample .csv', type=str, help="Name of test file")
+	parser.add_argument("-name_train", default='train_preprocessed.csv', help="Name of train file")
+	parser.add_argument("-name_val", default='val_preprocessed.csv', help="Name of val file or None: Train will be splitted")
+	parser.add_argument("-name_test", default='test_preprocessed.csv', type=str, help="Name of test file")
 
-	parser.add_argument("-to_preprocess_train", default=True, type=bool,help="Boolean to preprocess train and val data")
-	parser.add_argument("-to_preprocess_test", default=True, type=bool, help="Boolean to preprocess test data")
-	parser.add_argument("-to_preprocess_val", default=True, type=bool, help="Boolean to preprocess val data")
+	parser.add_argument("-to_preprocess_train", default=False, type=bool,help="Boolean to preprocess train and val data")
+	parser.add_argument("-to_preprocess_test", default=False, type=bool, help="Boolean to preprocess test data")
+	parser.add_argument("-to_preprocess_val", default=False, type=bool, help="Boolean to preprocess val data")
 
 	parser.add_argument("-to_train_split", default=False, type=bool, help="Boolean to split train for train and val")
 
@@ -104,13 +105,18 @@ if __name__ == '__main__':
 		if args.to_preprocess_train:
 			preprocessed_filepath = args.path_to_data + '/' + 'preprocessed_' + args.name_train 
 			df_train = run_preprocess(df_train,'train',config.cutoff,preprocessed_filepath)
+		else : 
+			df_train['label'] = df_train['label'].apply(lambda x : int(x))
+
+		# sample_ratio_list = [2,2,1]
+		# labels_list = [1,2,0]
+		# df_train = sample_from_class(df_train,sample_ratio_list,labels_list)
+		# df_train = df_train.sample(frac=0.2)
+		df_train = drop_null(df_train)
 
 		print("Value counts in train")
-		print(df_train.shape)
+		print(df_train['label'].value_counts())
 
-		sample_ratio_list = [2,2,1]
-		labels_list = [1,2,0]
-		df_train = sample_from_class(df_train,sample_ratio_list,labels_list)
 		print("Creating Data loaders for Train : \n")
 		sentencesA = df_train['questionText'].values
 		sentencesB = df_train['review_snippets_total'].values
@@ -119,8 +125,11 @@ if __name__ == '__main__':
 		dl = Preprocess_dataloading_bert(sentencesA,sentencesB,labels_tr)
 		input_ids_tr , attention_ids_tr , sent_ids_tr = dl.tokenize(tokenizer,config.tokenizer_name,config)
 
+		
+
 		if args.to_train_split :
 			train , val = dl.train_test_split_dataloading(input_ids_tr, attention_ids_tr, sent_ids_tr, config.test_size)
+			del df_train , labels_tr, input_ids_tr , attention_ids_tr , sent_ids_tr
 
 		else : 
 			val_path = args.path_to_data + '/' + args.name_val
@@ -135,6 +144,14 @@ if __name__ == '__main__':
 			if args.to_preprocess_train:
 				preprocessed_filepath = args.path_to_data + '/' + 'preprocessed_' + args.name_val 
 				df_val = run_preprocess(df_val,'Validation', config.cutoff,preprocessed_filepath)
+			else:
+				df_val['label'] = df_val['label'].apply(lambda x : int(x))
+
+			# df_val = df_val.sample(frac=0.2)
+			df_val = drop_null(df_val)
+			
+			print("Value counts in Validation")
+			print(df_val['label'].value_counts())
 
 			print("Creating Data loaders for Validation : \n")
 			sentencesA = df_val['questionText'].values
@@ -148,7 +165,7 @@ if __name__ == '__main__':
 			train = [torch.tensor(input_ids_tr),torch.tensor(attention_ids_tr),torch.tensor(labels_tr),torch.tensor(sent_ids_tr)]
 			val = [torch.tensor(input_ids_val),torch.tensor(attention_ids_val),torch.tensor(labels_val),torch.tensor(sent_ids_val)]
 
-		del df_train, df_val, input_ids_val , attention_ids_val , sent_ids_val, labels_val, labels_tr, input_ids_tr , attention_ids_tr , sent_ids_tr
+			del df_val, input_ids_val , attention_ids_val , sent_ids_val, labels_val
 
 		train_loader = dl.dataloading('train',config.batch_size, train[0],train[1],train[2],train[3])
 		validation_dataloader = dl.dataloading('validation',config.batch_size, val[0],val[1],val[2],val[3]) 
@@ -168,11 +185,15 @@ if __name__ == '__main__':
 		elif filetype == 'csv':
 			df_test = read_csv_cols(test_path,config_2.question_type,config_2.category_type,config_2.column_list)
 
-		# df_test , _ = assign_class(df_train,config.cutoff,col1="answers",col2="is_answerable")
-
 		if args.to_preprocess_test:
 			preprocessed_filepath = args.path_to_data + '/' + 'preprocessed_' + args.name_test 
 			df_test = run_preprocess(df_test,'test',config.cutoff,preprocessed_filepath)
+		else:
+			df_test['label'] = df_test['label'].apply(lambda x : int(x))
+
+		df_test = drop_null(df_test)
+		print("Value counts in Test")
+		print(df_test['label'].value_counts())
 
 		print("Creating Data loaders for Test : \n")
 		sentencesA = df_test['questionText'].values
