@@ -1,4 +1,4 @@
-# BTP
+# Measuring and ranking Question - Question relatedness to remove duplicate questions on Stackoverflow
 Repository for BTP - amazonQA data
 
 Refer to main.py 
